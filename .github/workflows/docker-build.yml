@@ -101,28 +101,34 @@ jobs:
     - name: 🧪 Test Docker image
       if: github.event_name != 'pull_request'
       run: |
-        echo "🧪 Testing Docker image startup..."
+        echo "Testing Docker image startup..."
         
         # Extract the first tag for testing
         IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
         echo "Testing image: $IMAGE_TAG"
         
-        # Run container in background
+        # Run container with example environment variables for testing
         docker run --rm --name test-container \
+          --init \
+          --shm-size=2gb \
           -p 8000:8000 \
+          -e NC_DOMAIN=cloud.example.com \
+          -e RECORDING_SECRET=abcdef123456789abcdef123456789ab \
+          -e SIGNALING_URL=https://signaling.example.com \
+          -e SIGNALING_INTERNAL_SECRET=fedcba987654321fedcba987654321fe \
           -d "$IMAGE_TAG"
         
         # Wait for startup and test
-        echo "⏳ Waiting for container to start..."
+        echo "Waiting for container to start..."
         sleep 30
         
         # Check if container is still running
         if docker ps | grep -q test-container; then
-          echo "✅ Container started successfully"
+          echo "Container started successfully"
           docker logs test-container
         else
-          echo "❌ Container failed to start"
-          docker logs test-container
+          echo "Container failed to start"
+          docker logs test-container || echo "No logs available"
           exit 1
         fi
         
