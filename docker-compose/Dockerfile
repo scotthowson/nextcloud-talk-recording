@@ -36,17 +36,14 @@ RUN /opt/bin/wrap_chromium_binary
 # nextcloud-talk-recording config
 RUN useradd --create-home recording
 
-# Create a template and simple runtime script
+# Create template and working config at build time
 COPY server.conf.in /etc/nextcloud-talk-recording/server.conf.template
+COPY server.conf.in /etc/nextcloud-talk-recording/server.conf
+RUN sed -i 's/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/' /etc/nextcloud-talk-recording/server.conf
+RUN chown recording:recording /etc/nextcloud-talk-recording/server.conf
 
-# Create the simplest possible entrypoint
-RUN echo '#!/bin/bash' > /entrypoint.sh && \
-    echo 'set -e' >> /entrypoint.sh && \
-    echo 'cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
-    echo 'sed -i "s/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/" /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
-    echo 'chown recording:recording /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
-    echo 'exec "$@"' >> /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+# Create entrypoint that stays as root longer
+RUN printf '#!/bin/bash\nset -e\n\n# Configure with environment variables if provided\nif [ -n "$NC_DOMAIN" ] && [ -n "$RECORDING_SECRET" ]; then\n  echo "Configuring with environment variables..."\n  cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf\n  sed -i "s/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/" /etc/nextcloud-talk-recording/server.conf\n  \n  # Add backend configuration\n  sed -i "s/#allowall = false/allowall = false/" /etc/nextcloud-talk-recording/server.conf\n  sed -i "s/#backends = backend-id, another-backend/backends = docker-backend/" /etc/nextcloud-talk-recording/server.conf\n  \n  echo "" >> /etc/nextcloud-talk-recording/server.conf\n  echo "[docker-backend]" >> /etc/nextcloud-talk-recording/server.conf\n  echo "url = https://$NC_DOMAIN" >> /etc/nextcloud-talk-recording/server.conf\n  echo "secret = $RECORDING_SECRET" >> /etc/nextcloud-talk-recording/server.conf\n  \n  if [ -n "$SIGNALING_URL" ] && [ -n "$SIGNALING_INTERNAL_SECRET" ]; then\n    sed -i "s/#signalings = signaling-id, another-signaling/signalings = docker-signaling/" /etc/nextcloud-talk-recording/server.conf\n    echo "" >> /etc/nextcloud-talk-recording/server.conf\n    echo "[docker-signaling]" >> /etc/nextcloud-talk-recording/server.conf\n    echo "url = $SIGNALING_URL" >> /etc/nextcloud-talk-recording/server.conf\n    echo "internalsecret = $SIGNALING_INTERNAL_SECRET" >> /etc/nextcloud-talk-recording/server.conf\n  fi\n  \n  chown recording:recording /etc/nextcloud-talk-recording/server.conf\nfi\n\n# Switch to recording user and run command\ncd /home/recording\nexec su recording -c "$*"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Deploy recording server
 RUN mkdir --parents /tmp/recording
@@ -58,9 +55,8 @@ RUN python3 -m pip install file:///tmp/recording/
 RUN apt-get clean && rm --recursive --force /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN rm --recursive --force /tmp/recording
 
-# Switch user and start the recording server
+# Start as root, then switch to recording user
 WORKDIR "/home/recording/"
-USER "recording"
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3", "-m", "nextcloud.talk.recording", "--config", "/etc/nextcloud-talk-recording/server.conf"]
