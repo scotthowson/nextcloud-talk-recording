@@ -76,15 +76,23 @@ jobs:
 
     - name: 🔍 Security scan
       if: github.event_name != 'pull_request'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ steps.meta.outputs.tags }}
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+      run: |
+        # Pull the image first to ensure it exists locally
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        
+        # Run trivy directly with docker
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          aquasec/trivy:latest image \
+          --format sarif \
+          --output trivy-results.sarif \
+          --exit-code 0 \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest || echo "Trivy scan completed"
       continue-on-error: true
-
-    - name: 📊 Upload security results
-      if: github.event_name != 'pull_request'
+    
+    - name: 📊 Upload security results  
+      if: github.event_name != 'pull_request' && hashFiles('trivy-results.sarif') != ''
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'

@@ -9,8 +9,8 @@ ARG TARGETARCH
 RUN apt-get --assume-yes update
 RUN apt-get --assume-yes upgrade
 
-# Common dependencies (add gettext-base for envsubst)
-RUN apt-get --assume-yes install software-properties-common gettext-base
+# Common dependencies
+RUN apt-get --assume-yes install software-properties-common
 
 # nextcloud-talk-recording dependencies
 RUN apt-get --assume-yes install ffmpeg pulseaudio python3-pip xvfb
@@ -40,47 +40,41 @@ RUN /opt/bin/wrap_chromium_binary
 # nextcloud-talk-recording config
 RUN useradd --create-home recording
 
-# Keep original as template, create dynamic entrypoint
-COPY server.conf.in /etc/nextcloud-talk-recording/server.conf.template
-
-# Simple entrypoint for environment variable support
+# Keep original as template, create entrypoint for env var support
+COPY server.conf.in /etc/nextcloud-talk-recording/server.conf.in
 RUN cat > /entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e
 
-# Copy template to working config
-cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf
+# Copy template to config location
+cp /etc/nextcloud-talk-recording/server.conf.in /etc/nextcloud-talk-recording/server.conf
 
-# Basic setup
+# Basic configuration (always applied)
 sed -i 's/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/' /etc/nextcloud-talk-recording/server.conf
 
-# Add environment variable sections if provided
+# Environment variable configuration (optional)
 if [ -n "$NC_DOMAIN" ] && [ -n "$RECORDING_SECRET" ]; then
-    BACKEND_ID=${BACKEND_ID:-"scotthowson-backend"}
+    BACKEND_ID=${BACKEND_ID:-"nextcloud-backend"}
     
     # Configure backend
-    sed -i "s/#allowall = false/allowall = false/" /etc/nextcloud-talk-recording/server.conf
+    sed -i 's/#allowall = false/allowall = false/' /etc/nextcloud-talk-recording/server.conf
     sed -i "s/#backends = backend-id, another-backend/backends = $BACKEND_ID/" /etc/nextcloud-talk-recording/server.conf
     
     # Add backend section
-    cat >> /etc/nextcloud-talk-recording/server.conf << EOF2
-
-[$BACKEND_ID]
-url = https://$NC_DOMAIN
-secret = $RECORDING_SECRET
-EOF2
-
+    echo "" >> /etc/nextcloud-talk-recording/server.conf
+    echo "[$BACKEND_ID]" >> /etc/nextcloud-talk-recording/server.conf
+    echo "url = https://$NC_DOMAIN" >> /etc/nextcloud-talk-recording/server.conf
+    echo "secret = $RECORDING_SECRET" >> /etc/nextcloud-talk-recording/server.conf
+    
     # Add signaling if provided
     if [ -n "$SIGNALING_URL" ] && [ -n "$SIGNALING_INTERNAL_SECRET" ]; then
-        SIGNALING_ID=${SIGNALING_ID:-"scotthowson-signaling"}
+        SIGNALING_ID=${SIGNALING_ID:-"signaling-server"}
         sed -i "s/#signalings = signaling-id, another-signaling/signalings = $SIGNALING_ID/" /etc/nextcloud-talk-recording/server.conf
         
-        cat >> /etc/nextcloud-talk-recording/server.conf << EOF3
-
-[$SIGNALING_ID]
-url = $SIGNALING_URL
-internalsecret = $SIGNALING_INTERNAL_SECRET
-EOF3
+        echo "" >> /etc/nextcloud-talk-recording/server.conf
+        echo "[$SIGNALING_ID]" >> /etc/nextcloud-talk-recording/server.conf
+        echo "url = $SIGNALING_URL" >> /etc/nextcloud-talk-recording/server.conf
+        echo "internalsecret = $SIGNALING_INTERNAL_SECRET" >> /etc/nextcloud-talk-recording/server.conf
     fi
 fi
 
