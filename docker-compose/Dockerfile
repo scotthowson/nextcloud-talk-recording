@@ -3,7 +3,8 @@ FROM ubuntu:20.04
 # SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
+ARG TARGETARCH
 
 RUN apt-get --assume-yes update
 RUN apt-get --assume-yes upgrade
@@ -18,14 +19,20 @@ RUN pip3 install --upgrade requests
 # firefox
 RUN apt-get --assume-yes install firefox firefox-geckodriver
 
-# chromium
+# chromium - architecture specific installation
 # The phd/chromium repository for Ubuntu is used because since Ubuntu 20.04
 # Chromium is provided as a snap package, and the equivalent PPA has been
-# discontinued.
-RUN echo "deb https://freeshell.de/phd/chromium/focal /" > /etc/apt/sources.list.d/phd-chromium.list
-RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 869689FE09306074
-RUN apt-get update
-RUN apt-get --assume-yes install chromium
+# discontinued. However, this PPA only supports AMD64.
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        echo "deb https://freeshell.de/phd/chromium/focal /" > /etc/apt/sources.list.d/phd-chromium.list && \
+        apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 869689FE09306074 && \
+        apt-get update && \
+        apt-get --assume-yes install chromium; \
+    else \
+        # For ARM64 and other architectures, install chromium-browser from Ubuntu repos
+        apt-get --assume-yes install chromium-browser && \
+        ln -sf /usr/bin/chromium-browser /usr/bin/chromium; \
+    fi
 
 COPY ./docker-compose/wrap_chromium_binary /opt/bin/wrap_chromium_binary
 RUN /opt/bin/wrap_chromium_binary
