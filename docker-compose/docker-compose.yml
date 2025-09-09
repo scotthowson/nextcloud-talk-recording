@@ -1,19 +1,40 @@
+# docker-compose.yml - Scott Howson's Nextcloud Talk Recording Setup
+version: "3.9"
+
 services:
   nextcloud-talk-recording:
-    image: ghcr.io/scott_howson/nextcloud-talk-recording:latest
+    image: ghcr.io/scotthowson/nextcloud-talk-recording:latest
     init: true
     shm_size: '2gb'
     restart: unless-stopped
     ports:
       - "8000:8000"
+    environment:
+      # Required: Your Nextcloud domain (without https://)
+      - NC_DOMAIN=cloud.scotthowson.io
+      
+      # Required: Shared secret for backend authentication
+      # Generate with: openssl rand -hex 32
+      - RECORDING_SECRET=your-generated-32-char-hex-secret-here
+      
+      # Optional: Custom backend ID 
+      - BACKEND_ID=scotthowson-backend
+      
+      # Optional: Signaling server configuration (uncomment if you have signaling server)
+      - SIGNALING_URL=https://signaling.scotthowson.io
+      - SIGNALING_INTERNAL_SECRET=your-signaling-internal-secret-here
+      - SIGNALING_ID=scotthowson-signaling
+      
+      # Optional: Timezone
+      - TZ=UTC
+    
+    volumes:
+      # Optional: Mount recordings directory for persistent storage
+      - ./recordings:/tmp/recordings
+      
     networks:
       - nextcloud-talk-recording
-    # Optional: Mount custom config
-    # volumes:
-    #   - ./custom-server.conf:/etc/nextcloud-talk-recording/server.conf:ro
-    # Optional: Environment variables
-    # environment:
-    #   - NEXTCLOUD_URL=https://your-nextcloud.example.com
+    
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(1); s.connect((\"127.0.0.1\", 8000)); s.close()' || exit 1"]
       interval: 30s
@@ -21,12 +42,26 @@ services:
       retries: 3
       start_period: 60s
 
+  # Alternative: Basic setup without signaling server (for testing)
+  nextcloud-talk-recording-basic:
+    image: ghcr.io/scotthowson/nextcloud-talk-recording:latest
+    init: true
+    shm_size: '2gb'
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - NC_DOMAIN=cloud.scotthowson.io
+      - RECORDING_SECRET=your-generated-32-char-hex-secret-here
+      - BACKEND_ID=scotthowson-basic
+      # No signaling variables = basic setup
+    profiles:
+      - basic  # Use: docker-compose --profile basic up
+    networks:
+      - nextcloud-talk-recording
+
 networks:
   nextcloud-talk-recording:
 
-# Optional: Add logging configuration
-# logging:
-#   driver: "json-file"
-#   options:
-#     max-size: "100m"
-#     max-file: "3"
+volumes:
+  recordings:
