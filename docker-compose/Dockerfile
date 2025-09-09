@@ -57,8 +57,6 @@ SIGNALING_URL=${SIGNALING_URL:-""}
 SIGNALING_INTERNAL_SECRET=${SIGNALING_INTERNAL_SECRET:-""}
 SIGNALING_ID=${SIGNALING_ID:-"signaling-server"}
 
-echo "🐳 Configuring Nextcloud Talk Recording Server..."
-
 # Start with the template
 cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf
 
@@ -79,7 +77,7 @@ BACKEND_EOF
 
 # Configure signaling if provided
 if [ -n "$SIGNALING_URL" ] && [ -n "$SIGNALING_INTERNAL_SECRET" ]; then
-    echo "✅ Configuring signaling server: $SIGNALING_URL"
+    echo "Configuring signaling server..."
     sed -i "s|#signalings = signaling-id, another-signaling|signalings = $SIGNALING_ID|" /etc/nextcloud-talk-recording/server.conf
     
     cat >> /etc/nextcloud-talk-recording/server.conf << SIGNALING_EOF
@@ -89,20 +87,19 @@ url = $SIGNALING_URL
 internalsecret = $SIGNALING_INTERNAL_SECRET
 SIGNALING_EOF
 else
-    echo "ℹ️  No signaling server configured (optional)"
+    echo "No signaling server configured (optional)"
 fi
 
 # Change ownership to recording user
 chown recording:recording /etc/nextcloud-talk-recording/server.conf
 
-echo "📋 Configuration summary:"
-echo "   • NC_DOMAIN: $NC_DOMAIN"
-echo "   • BACKEND_ID: $BACKEND_ID"
+echo "Configuration generated:"
+echo "- NC_DOMAIN: $NC_DOMAIN"
+echo "- BACKEND_ID: $BACKEND_ID"
 if [ -n "$SIGNALING_URL" ]; then
-    echo "   • SIGNALING_URL: $SIGNALING_URL"
-    echo "   • SIGNALING_ID: $SIGNALING_ID"
+    echo "- SIGNALING_URL: $SIGNALING_URL"
+    echo "- SIGNALING_ID: $SIGNALING_ID"
 fi
-echo ""
 
 # Execute the original command
 exec "$@"
