@@ -1,0 +1,142 @@
+# .github/workflows/docker-build.yml
+name: 🐳 Build Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+    paths:
+      - 'src/**'
+      - 'docker-compose/**'
+      - 'pyproject.toml'
+      - 'server.conf.in'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'docker-compose/**'
+      - 'pyproject.toml'
+      - 'server.conf.in'
+  workflow_dispatch: # Manual trigger button
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🔧 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔑 Log in to GitHub Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏷️ Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix={{branch}}-,format=short
+        labels: |
+          org.opencontainers.image.title=Nextcloud Talk Recording
+          org.opencontainers.image.description=Docker image for Nextcloud Talk Recording server
+          org.opencontainers.image.vendor=Nextcloud
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+    - name: 🚀 Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker-compose/Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        platforms: linux/amd64,linux/arm64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: 🔍 Security scan
+      if: github.event_name != 'pull_request'
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.meta.outputs.tags }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+      continue-on-error: true
+
+    - name: 📊 Upload security results
+      if: github.event_name != 'pull_request'
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+      continue-on-error: true
+
+    - name: 🧪 Test Docker image
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "🧪 Testing Docker image startup..."
+        
+        # Extract the first tag for testing
+        IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+        echo "Testing image: $IMAGE_TAG"
+        
+        # Run container in background
+        docker run --rm --name test-container \
+          -p 8000:8000 \
+          -d "$IMAGE_TAG"
+        
+        # Wait for startup and test
+        echo "⏳ Waiting for container to start..."
+        sleep 30
+        
+        # Check if container is still running
+        if docker ps | grep -q test-container; then
+          echo "✅ Container started successfully"
+          docker logs test-container
+        else
+          echo "❌ Container failed to start"
+          docker logs test-container
+          exit 1
+        fi
+        
+        # Cleanup
+        docker stop test-container
+
+    - name: 📦 Output image details
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "## 🎉 Docker Image Built Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Image Details:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Registry:** \`${{ env.REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository:** \`${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tags:**" >> $GITHUB_STEP_SUMMARY
+        echo '${{ steps.meta.outputs.tags }}' | sed 's/^/  - `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 Usage:" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -p 8000:8000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
