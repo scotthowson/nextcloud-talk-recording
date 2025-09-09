@@ -10,55 +10,23 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Required: Your Nextcloud domain (without https://)
       - NC_DOMAIN=cloud.scotthowson.io
-      
-      # Required: Shared secret for backend authentication
-      # Generate with: openssl rand -hex 32
-      - RECORDING_SECRET=your-generated-32-char-hex-secret-here
-      
-      # Optional: Custom backend ID 
-      - BACKEND_ID=scotthowson-backend
-      
-      # Optional: Signaling server configuration (uncomment if you have signaling server)
+      - RECORDING_SECRET=abc123...  # Generate with: openssl rand -hex 32
       - SIGNALING_URL=https://signaling.scotthowson.io
-      - SIGNALING_INTERNAL_SECRET=your-signaling-internal-secret-here
-      - SIGNALING_ID=scotthowson-signaling
-      
-      # Optional: Timezone
-      - TZ=UTC
-    
-    volumes:
-      # Optional: Mount recordings directory for persistent storage
-      - ./recordings:/tmp/recordings
-      
+      - SIGNALING_INTERNAL_SECRET=def456...  # From your signaling server config
     networks:
       - nextcloud-talk-recording
-    
+    volumes:
+      - ./recordings:/tmp/recordings
+    networks:
+      - nextcloud-talk-recording
+  
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(1); s.connect((\"127.0.0.1\", 8000)); s.close()' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  # Alternative: Basic setup without signaling server (for testing)
-  nextcloud-talk-recording-basic:
-    image: ghcr.io/scotthowson/nextcloud-talk-recording:latest
-    init: true
-    shm_size: '2gb'
-    restart: unless-stopped
-    ports:
-      - "8001:8000"
-    environment:
-      - NC_DOMAIN=cloud.scotthowson.io
-      - RECORDING_SECRET=your-generated-32-char-hex-secret-here
-      - BACKEND_ID=scotthowson-basic
-      # No signaling variables = basic setup
-    profiles:
-      - basic  # Use: docker-compose --profile basic up
-    networks:
-      - nextcloud-talk-recording
 
 networks:
   nextcloud-talk-recording:
