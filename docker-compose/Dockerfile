@@ -36,62 +36,17 @@ RUN /opt/bin/wrap_chromium_binary
 # nextcloud-talk-recording config
 RUN useradd --create-home recording
 
-# Keep original as template
+# Create a template and simple runtime script
 COPY server.conf.in /etc/nextcloud-talk-recording/server.conf.template
 
-# Create simple entrypoint
-RUN cat > /entrypoint.sh << 'EOF'
-#!/bin/bash
-set -e
-
-echo "Starting Nextcloud Talk Recording Server..."
-
-# Copy template to working config
-cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf
-
-# Basic configuration
-sed -i 's/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/' /etc/nextcloud-talk-recording/server.conf
-
-# Add environment-based configuration if variables are set
-if [ -n "$NC_DOMAIN" ] && [ -n "$RECORDING_SECRET" ]; then
-    echo "Configuring with environment variables..."
-    
-    # Set backend configuration
-    sed -i 's/#allowall = false/allowall = false/' /etc/nextcloud-talk-recording/server.conf
-    sed -i 's/#backends = backend-id, another-backend/backends = docker-backend/' /etc/nextcloud-talk-recording/server.conf
-    
-    # Add backend section at end of file
-    cat >> /etc/nextcloud-talk-recording/server.conf << BACKEND_END
-
-[docker-backend]
-url = https://$NC_DOMAIN
-secret = $RECORDING_SECRET
-BACKEND_END
-
-    # Add signaling configuration if provided
-    if [ -n "$SIGNALING_URL" ] && [ -n "$SIGNALING_INTERNAL_SECRET" ]; then
-        echo "Adding signaling server configuration..."
-        sed -i 's/#signalings = signaling-id, another-signaling/signalings = docker-signaling/' /etc/nextcloud-talk-recording/server.conf
-        
-        cat >> /etc/nextcloud-talk-recording/server.conf << SIGNALING_END
-
-[docker-signaling]
-url = $SIGNALING_URL
-internalsecret = $SIGNALING_INTERNAL_SECRET
-SIGNALING_END
-    fi
-else
-    echo "No environment variables set, using basic configuration"
-fi
-
-# Set proper ownership
-chown recording:recording /etc/nextcloud-talk-recording/server.conf
-
-echo "Configuration complete, starting recording server..."
-exec "$@"
-EOF
-
-RUN chmod +x /entrypoint.sh
+# Create the simplest possible entrypoint
+RUN echo '#!/bin/bash' > /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo 'cp /etc/nextcloud-talk-recording/server.conf.template /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
+    echo 'sed -i "s/#listen = 127.0.0.1:8000/listen = 0.0.0.0:8000/" /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
+    echo 'chown recording:recording /etc/nextcloud-talk-recording/server.conf' >> /entrypoint.sh && \
+    echo 'exec "$@"' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 # Deploy recording server
 RUN mkdir --parents /tmp/recording
